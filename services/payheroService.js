@@ -35,6 +35,18 @@ class PayheroService {
             throw error.response ? error.response.data : error;
         }
     }
+
+    /**
+     * Retrieves the channel's wallet balance from Payhero.
+     */
+    async getBalance() {
+        try {
+            const response = await this.client.get(`/payment_channels/${config.channelId}`);
+            return response.data;
+        } catch (error) {
+            throw error.response ? error.response.data : error;
+        }
+    }
 }
 
 module.exports = new PayheroService();

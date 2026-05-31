@@ -483,6 +483,15 @@
             background: rgba(34, 197, 94, 0.04) !important;
             box-shadow: 0 0 24px rgba(34, 197, 94, 0.1) !important;
         }
+
+        /* ── Float Animation for Wallet Widget ── */
+        @keyframes pulseFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .float-widget {
+            animation: pulseFloat 4s ease-in-out infinite;
+        }
     </style>
 </head>
 <body>
@@ -510,7 +519,21 @@
                     <p class="text-[0.6rem] sm:text-xs text-white/40 font-medium">M-Pesa B2C · Payhero Gateway</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-wrap justify-center sm:justify-end">
+                <!-- Wallet Balance Widget -->
+                <div class="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-semibold text-green-400 shadow-2xl backdrop-blur-xl animate-in float-widget hover:bg-white/[0.05] transition-all duration-300">
+                    <div class="bg-green-500/20 p-1.5 rounded-lg">
+                        <i data-lucide="wallet" class="w-3.5 h-3.5 text-green-400"></i>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[0.55rem] text-white/30 uppercase tracking-widest leading-none mb-1">Live Balance</span>
+                        <div class="flex items-center gap-1.5">
+                            <span id="header-balance" class="font-mono text-white text-sm leading-none tabular-nums">KES 0.00</span>
+                            <span id="balance-mocked-badge" class="hidden text-[7px] bg-white/10 text-white/40 px-1 py-0.5 rounded font-bold uppercase tracking-tighter">Mock</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/5 border border-white/5 text-sm">
                     <span class="status-dot online" id="status-dot"></span>
                     <span class="text-white/50 text-[0.6rem] sm:text-xs font-medium" id="status-text">Online</span>
@@ -685,6 +708,15 @@
                         </div>
                         <p class="text-sm text-white/40 mb-6">Initiate bulk B2C transfers to all recipients in the list via Payhero.</p>
 
+                        <!-- Dry Run Toggle -->
+                        <div class="flex items-center justify-center gap-2 mb-6 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="dry-run-toggle" class="sr-only peer">
+                                <div class="w-10 h-5 bg-white/10 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/20 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500/40 peer-checked:after:bg-white"></div>
+                                <span class="ml-3 text-[10px] font-bold text-white/40 uppercase tracking-widest">Enable Dry Run Mode</span>
+                            </label>
+                        </div>
+
                         <button id="run-payout" class="btn-payout">
                             <span class="pulse-ring"></span>
                             <i data-lucide="zap" class="w-5 h-5 fill-current"></i>
@@ -789,6 +821,8 @@
         let statsTotal = 0;
         let statsSuccess = 0;
         let statsFailed = 0;
+        let totalPayoutAmount = 0;
+        let walletBalance = 0;
         // ── Toast system ──
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
@@ -826,6 +860,8 @@
             const total = recipients.reduce((sum, r) => sum + Number(r.amount), 0);
             const avg = count > 0 ? Math.round(total / count) : 0;
 
+            totalPayoutAmount = total;
+
             // Animate count
             summaryCount.textContent = count;
             summaryCount.style.transition = 'transform 0.15s ease';
@@ -837,6 +873,9 @@
 
             // Average
             summaryAvg.textContent = count > 0 ? `KES ${avg.toLocaleString()}` : 'KES 0';
+
+            // Verify wallet coverage
+            checkBalanceSufficiency();
         }
 
         function updatePayoutBar(success, failed) {
@@ -1328,10 +1367,12 @@
                 statsSuccess++;
                 statSent.textContent = statsSuccess;
                 updatePayoutBar(statsSuccess, statsFailed);
+                fetchWalletBalance(); // Update balance dynamically on success
             } else if (logLine.includes('ERROR') || logLine.includes('DRY-RUN-ERROR')) {
                 statsFailed++;
                 statFailed.textContent = statsFailed;
                 updatePayoutBar(statsSuccess, statsFailed);
+                fetchWalletBalance(); // Update balance dynamically on error
             }
             
             // Generate user-facing Toast alerts for individual background transfers
@@ -1355,6 +1396,63 @@
             }
         }
 
+        // ── Wallet Balance Management ──
+        function checkBalanceSufficiency() {
+            const dryRun = document.getElementById('dry-run-toggle')?.checked ?? false;
+            const runBtn = document.getElementById('run-payout');
+            
+            if (!dryRun && totalPayoutAmount > walletBalance) {
+                runBtn.disabled = true;
+                runBtn.classList.add('opacity-40', 'cursor-not-allowed');
+                runBtn.title = "Insufficient wallet balance to cover payout";
+                
+                let balanceWarning = document.getElementById('balance-warning-text');
+                if (!balanceWarning) {
+                    balanceWarning = document.createElement('p');
+                    balanceWarning.id = 'balance-warning-text';
+                    balanceWarning.className = 'text-[10px] text-red-400 font-semibold mt-3 text-center animate-pulse';
+                    runBtn.parentNode.insertBefore(balanceWarning, runBtn.nextSibling);
+                }
+                const required = (totalPayoutAmount - walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                balanceWarning.textContent = `Insufficient funds. Deposit KES ${required} to proceed.`;
+            } else {
+                runBtn.disabled = false;
+                runBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+                runBtn.removeAttribute('title');
+                
+                const balanceWarning = document.getElementById('balance-warning-text');
+                if (balanceWarning) balanceWarning.remove();
+            }
+        }
+
+        async function fetchWalletBalance() {
+            try {
+                const res = await fetch('/api/balance');
+                const data = await res.json();
+                if (data.success) {
+                    walletBalance = data.balance;
+                    
+                    const balanceElement = document.getElementById('header-balance');
+                    if (balanceElement) {
+                        balanceElement.textContent = `KES ${walletBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    }
+                    
+                    const badge = document.getElementById('balance-mocked-badge');
+                    if (badge) {
+                        if (data.mocked) {
+                            badge.classList.remove('hidden');
+                        } else {
+                            badge.classList.add('hidden');
+                        }
+                    }
+
+                    checkBalanceSufficiency();
+                }
+            } catch (err) {
+                console.error('Failed to fetch wallet balance:', err);
+            }
+        }
+
         // Active checking helper in case user refreshes during parsing
         async function checkInitialStatus() {
             try {
@@ -1370,6 +1468,18 @@
         fetchRecipients();
         connectSSE();
         checkInitialStatus();
+        fetchWalletBalance();
+
+        // Hook Dry Run toggle to recalculate balance sufficiency
+        const dryRunToggle = document.getElementById('dry-run-toggle');
+        if (dryRunToggle) {
+            dryRunToggle.onchange = () => {
+                checkBalanceSufficiency();
+            };
+        }
+
+        // Poll balance every 10 seconds to keep UI state fresh
+        setInterval(fetchWalletBalance, 10000);
     </script>
 </body>
 </html>
