@@ -353,14 +353,89 @@
             .glass:hover { transform: none !important; }
         }
 
+        /* ── Toast Container ── */
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            pointer-events: none;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 1024px) {
             .main-grid { grid-template-columns: 1fr; }
         }
+        @media (max-width: 768px) {
+            .main-grid { gap: 1.25rem; }
+            .glass { border-radius: 12px; }
+            .orb-1 { width: 300px; height: 300px; top: -100px; right: -80px; filter: blur(80px); }
+            .orb-2 { width: 250px; height: 250px; bottom: -80px; left: -60px; filter: blur(70px); }
+            .orb-3 { display: none; }
+            .grid-overlay { background-size: 40px 40px; }
+            .btn-payout { padding: 1rem 1.5rem; font-size: 1rem; }
+        }
         @media (max-width: 640px) {
-            .header { padding: 1rem; flex-direction: column; gap: 0.75rem; text-align: center; }
+            .header { padding: 0.875rem 1rem; gap: 0.5rem; text-align: center; }
+            .header .flex-wrap { justify-content: center; }
             .recipient-form { flex-direction: column; }
-            .glass-table th, .glass-table td { padding: 0.625rem 0.875rem; }
+            .glass-table { font-size: 0.8rem; }
+            .glass-table th, .glass-table td { padding: 0.5rem 0.75rem; }
+            main.w-full.max-w-7xl { padding: 0.75rem !important; }
+            .btn-primary { width: 100%; justify-content: center; }
+            .toast { bottom: 1rem; right: 1rem; left: 1rem; max-width: none; padding: 0.875rem 1.125rem; font-size: 0.8rem; }
+            .toast-container { bottom: 1rem; right: 1rem; left: 1rem; }
+            .stats-grid { grid-template-columns: 1fr; gap: 0.75rem; }
+            .btn-danger { padding: 0.5rem 0.75rem; }
+        }
+        @media (max-width: 480px) {
+            .glass-table { font-size: 0.75rem; }
+            .glass-table th, .glass-table td { padding: 0.375rem 0.5rem; }
+            .glass-input { font-size: 0.8rem; padding: 0.625rem 0.75rem; }
+            .btn-primary { padding: 0.625rem 1rem; font-size: 0.8rem; }
+            .btn-payout { font-size: 0.9rem; padding: 0.875rem 1.25rem; }
+            .amount-badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
+            .orb-1 { width: 200px; height: 200px; top: -60px; right: -50px; filter: blur(60px); }
+            .orb-2 { width: 180px; height: 180px; bottom: -60px; left: -40px; filter: blur(50px); }
+            .grid-overlay { background-size: 30px 30px; }
+            section.glass.p-6 { padding: 1rem; }
+            section.glass.p-5 { padding: 0.875rem; }
+        }
+
+        /* ── Mobile-friendly table: card layout on tiny screens ── */
+        @media (max-width: 480px) {
+            .glass-table thead { display: none; }
+            .glass-table tr {
+                display: flex;
+                flex-direction: column;
+                padding: 0.75rem;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            }
+            .glass-table tr:last-child { border-bottom: none; }
+            .glass-table td {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0.35rem 0;
+                border-bottom: 1px solid rgba(255,255,255,0.03);
+                gap: 0.5rem;
+            }
+            .glass-table td:last-child { border-bottom: none; }
+            .glass-table td::before {
+                content: attr(data-label);
+                font-size: 0.6rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                color: rgba(255,255,255,0.3);
+                flex-shrink: 0;
+            }
+            .glass-table td:last-child::before { display: none; }
+            .glass-table td:last-child { justify-content: flex-end; }
+            #recipients-tbody .btn-danger { padding: 0.375rem 0.5rem; }
         }
 
         /* ── Loading shimmer for table rows ── */
@@ -412,26 +487,26 @@
     <div class="grid-overlay"></div>
 
     <!-- ── Toast Container ── -->
-    <div id="toast-container" style="position:fixed;bottom:2rem;right:2rem;z-index:100;display:flex;flex-direction:column;gap:0.75rem;pointer-events:none;"></div>
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- ── App Container ── -->
     <div class="relative z-10 min-h-screen flex flex-col">
 
         <!-- Header -->
-        <header class="header glass rounded-none border-x-0 border-t-0 border-b border-white/5 px-6 py-4 flex items-center justify-between animate-in" style="border-radius:0;">
-            <div class="flex items-center gap-3">
-                <div class="bg-gradient-to-br from-green-500 to-emerald-600 p-2.5 rounded-xl shadow-lg shadow-green-500/20">
-                    <i data-lucide="send" class="w-5 h-5 text-white"></i>
+        <header class="header glass rounded-none border-x-0 border-t-0 border-b border-white/5 px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-center sm:justify-between gap-2 animate-in" style="border-radius:0;">
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="bg-gradient-to-br from-green-500 to-emerald-600 p-1.5 sm:p-2.5 rounded-xl shadow-lg shadow-green-500/20 flex-shrink-0">
+                    <i data-lucide="send" class="w-4 h-4 sm:w-5 sm:h-5 text-white"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold tracking-tight text-white">Bulk Payout</h1>
-                    <p class="text-xs text-white/40 font-medium">M-Pesa B2C · Payhero Gateway</p>
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">Bulk Payout</h1>
+                    <p class="text-[0.6rem] sm:text-xs text-white/40 font-medium">M-Pesa B2C · Payhero Gateway</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5 text-sm">
+                <div class="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/5 border border-white/5 text-sm">
                     <span class="status-dot online" id="status-dot"></span>
-                    <span class="text-white/50 text-xs font-medium" id="status-text">Online</span>
+                    <span class="text-white/50 text-[0.6rem] sm:text-xs font-medium" id="status-text">Online</span>
                 </div>
             </div>
         </header>
@@ -489,9 +564,9 @@
                             <table class="glass-table">
                                 <thead>
                                     <tr>
-                                        <th>Phone Number</th>
-                                        <th>Amount</th>
-                                        <th class="text-right">Action</th>
+                                        <th class="hidden sm:table-cell">Phone Number</th>
+                                        <th class="hidden sm:table-cell">Amount</th>
+                                        <th class="text-right hidden sm:table-cell">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="recipients-tbody">
@@ -533,18 +608,18 @@
                         </button>
 
                         <!-- Stats row -->
-                        <div class="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-white/5">
-                            <div class="text-center">
+                        <div class="stats-grid grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mt-5 pt-5 border-t border-white/5">
+                            <div class="text-center bg-white/[0.02] rounded-lg p-2 sm:p-0 sm:bg-transparent">
                                 <p class="text-xs text-white/40 font-medium">Total</p>
-                                <p id="stat-total" class="text-lg font-bold text-white mt-0.5">0</p>
+                                <p id="stat-total" class="text-lg sm:text-xl font-bold text-white mt-0.5 tabular-nums">0</p>
                             </div>
-                            <div class="text-center">
+                            <div class="text-center bg-white/[0.02] rounded-lg p-2 sm:p-0 sm:bg-transparent">
                                 <p class="text-xs text-white/40 font-medium">Sent</p>
-                                <p id="stat-sent" class="text-lg font-bold text-green-400 mt-0.5">0</p>
+                                <p id="stat-sent" class="text-lg sm:text-xl font-bold text-green-400 mt-0.5 tabular-nums">0</p>
                             </div>
-                            <div class="text-center">
+                            <div class="text-center bg-white/[0.02] rounded-lg p-2 sm:p-0 sm:bg-transparent">
                                 <p class="text-xs text-white/40 font-medium">Failed</p>
-                                <p id="stat-failed" class="text-lg font-bold text-red-400 mt-0.5">0</p>
+                                <p id="stat-failed" class="text-lg sm:text-xl font-bold text-red-400 mt-0.5 tabular-nums">0</p>
                             </div>
                         </div>
                     </section>
@@ -710,9 +785,9 @@
                     const delay = i * 0.05;
                     return `
                         <tr style="animation-delay: ${delay}s;">
-                            <td class="font-medium text-white/80">${r.phone}</td>
-                            <td><span class="amount-badge">KES ${Number(r.amount).toLocaleString()}</span></td>
-                            <td class="text-right">
+                            <td data-label="Phone" class="font-medium text-white/80">${r.phone}</td>
+                            <td data-label="Amount"><span class="amount-badge">KES ${Number(r.amount).toLocaleString()}</span></td>
+                            <td data-label="" class="text-right">
                                 <button onclick="deleteRecipient('${r.phone}', this)" class="btn-danger" title="Remove recipient">
                                     <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                 </button>
