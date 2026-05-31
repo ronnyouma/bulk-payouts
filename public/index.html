@@ -476,6 +476,13 @@
             text-align: center;
             color: rgba(255,255,255,0.3);
         }
+
+        /* ── Dropzone Active State ── */
+        .dropzone-active {
+            border-color: rgba(34, 197, 94, 0.5) !important;
+            background: rgba(34, 197, 94, 0.04) !important;
+            box-shadow: 0 0 24px rgba(34, 197, 94, 0.1) !important;
+        }
     </style>
 </head>
 <body>
@@ -546,6 +553,83 @@
                                 </button>
                             </div>
                         </form>
+                    </section>
+
+                    <!-- Excel Import Card -->
+                    <section class="glass p-6 animate-in animate-in-delay-1.5">
+                        <div class="flex items-center justify-between mb-5">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2.5 rounded-lg bg-green-500/10 text-green-400">
+                                    <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h2 class="text-lg font-semibold text-white">Import from Excel</h2>
+                                    <p class="text-xs text-white/40 font-medium">Upload contact sheets (.xlsx, .xls) to populate recipients in bulk</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dropzone area -->
+                        <div id="dropzone" class="border border-dashed border-white/10 hover:border-green-500/50 hover:bg-white/[0.01] rounded-xl p-8 text-center cursor-pointer transition-all duration-300 relative group">
+                            <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden">
+                            <div class="flex flex-col items-center gap-3">
+                                <div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/50 group-hover:text-green-400 group-hover:bg-green-500/10 group-hover:scale-110 transition-all duration-300">
+                                    <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-white/80">Drag and drop your spreadsheet here</p>
+                                    <p class="text-xs text-white/30 mt-1">or click to browse from files</p>
+                                </div>
+                                <div class="text-[10px] text-white/20 uppercase tracking-widest border border-white/5 px-2.5 py-1 rounded-md bg-white/[0.01]">
+                                    Supports .xlsx, .xls
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Upload / Processing progress -->
+                        <div id="upload-status-panel" class="hidden mt-5 p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span id="upload-status-text" class="text-xs font-semibold text-white/80">Processing Excel data...</span>
+                                </div>
+                                <span id="upload-status-percent" class="text-xs font-mono text-green-400">0%</span>
+                            </div>
+                            <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden">
+                                <div id="upload-status-bar" class="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between text-[10px] text-white/40">
+                                <span id="upload-status-details">Rows: 0 / 0</span>
+                                <span id="upload-status-valid">Valid: 0</span>
+                            </div>
+                        </div>
+
+                        <!-- Import results & error panel -->
+                        <div id="upload-result-panel" class="hidden mt-5 space-y-4">
+                            <div class="p-4 rounded-xl border flex items-center justify-between gap-3" id="result-status-card">
+                                <div class="flex items-center gap-2.5">
+                                    <div id="result-status-icon" class="p-1.5 rounded-lg"></div>
+                                    <div>
+                                        <p id="result-title" class="text-xs font-semibold text-white"></p>
+                                        <p id="result-desc" class="text-[10px] text-white/50"></p>
+                                    </div>
+                                </div>
+                                <button id="reset-upload-btn" class="px-3 py-1.5 text-[10px] font-semibold text-white/60 bg-white/5 hover:bg-white/10 border border-white/5 rounded-md transition-all">
+                                    Dismiss
+                                </button>
+                            </div>
+
+                            <!-- Error Log details (collapsible/scrollable) -->
+                            <div id="error-log-container" class="hidden">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-[10px] font-semibold text-red-400/80 uppercase tracking-wider">Validation Errors log</span>
+                                    <span id="error-log-count" class="text-[10px] bg-red-500/10 text-red-400 border border-red-500/10 px-2 py-0.5 rounded">0 errors</span>
+                                </div>
+                                <div id="error-log-list" class="max-h-40 overflow-y-auto border border-red-500/10 bg-red-950/10 rounded-lg p-3 text-xs font-mono space-y-1 text-red-200/70">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Recipients List -->
@@ -901,8 +985,206 @@
             }, 5000);
         };
 
+        // ── DOM refs for Excel upload ──
+        const dropzone = document.getElementById('dropzone');
+        const excelInput = document.getElementById('excel-file-input');
+        const uploadStatusPanel = document.getElementById('upload-status-panel');
+        const uploadStatusText = document.getElementById('upload-status-text');
+        const uploadStatusPercent = document.getElementById('upload-status-percent');
+        const uploadStatusBar = document.getElementById('upload-status-bar');
+        const uploadStatusDetails = document.getElementById('upload-status-details');
+        const uploadStatusValid = document.getElementById('upload-status-valid');
+
+        const uploadResultPanel = document.getElementById('upload-result-panel');
+        const resultStatusCard = document.getElementById('result-status-card');
+        const resultStatusIcon = document.getElementById('result-status-icon');
+        const resultTitle = document.getElementById('result-title');
+        const resultDesc = document.getElementById('result-desc');
+        const resetUploadBtn = document.getElementById('reset-upload-btn');
+        const errorLogContainer = document.getElementById('error-log-container');
+        const errorLogCount = document.getElementById('error-log-count');
+        const errorLogList = document.getElementById('error-log-list');
+
+        // ── Drag & Drop Event Listeners ──
+        if (dropzone) {
+            dropzone.onclick = () => excelInput.click();
+
+            dropzone.ondragover = dropzone.ondragenter = (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dropzone-active');
+            };
+
+            dropzone.ondragleave = dropzone.ondragend = () => {
+                dropzone.classList.remove('dropzone-active');
+            };
+
+            dropzone.ondrop = (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dropzone-active');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleExcelFile(e.dataTransfer.files[0]);
+                }
+            };
+
+            excelInput.onchange = () => {
+                if (excelInput.files && excelInput.files[0]) {
+                    handleExcelFile(excelInput.files[0]);
+                }
+            };
+        }
+
+        async function handleExcelFile(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext !== 'xlsx' && ext !== 'xls') {
+                showToast('Only Excel spreadsheet files (.xlsx, .xls) are allowed', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('excelFile', file);
+
+            // Hide previous results
+            uploadResultPanel.classList.add('hidden');
+            uploadStatusPanel.classList.remove('hidden');
+            updateUploadProgress(0, 0, 0, 'Uploading spreadsheet...', 'processing');
+
+            try {
+                const res = await fetch('/api/upload-recipients', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    showToast(data.message);
+                    // Start polling
+                    startPollingUploadStatus();
+                } else {
+                    showToast(data.error || 'Failed to upload spreadsheet', 'error');
+                    uploadStatusPanel.classList.add('hidden');
+                }
+            } catch (err) {
+                showToast('Network error during upload', 'error');
+                uploadStatusPanel.classList.add('hidden');
+            }
+        }
+
+        let uploadPollInterval = null;
+
+        function startPollingUploadStatus() {
+            if (uploadPollInterval) clearInterval(uploadPollInterval);
+            uploadPollInterval = setInterval(checkUploadStatus, 1000);
+            checkUploadStatus();
+        }
+
+        async function checkUploadStatus() {
+            try {
+                const res = await fetch('/api/upload-status');
+                const data = await res.json();
+
+                if (data.status === 'idle') {
+                    if (uploadPollInterval) {
+                        clearInterval(uploadPollInterval);
+                        uploadPollInterval = null;
+                    }
+                    uploadStatusPanel.classList.add('hidden');
+                    return;
+                }
+
+                if (data.status === 'processing') {
+                    uploadStatusPanel.classList.remove('hidden');
+                    uploadResultPanel.classList.add('hidden');
+                    
+                    const pct = data.totalRows > 0 ? Math.round((data.processedRows / data.totalRows) * 100) : 0;
+                    updateUploadProgress(pct, data.processedRows, data.totalRows, 'Processing contacts...', 'processing', data.validCount);
+                } else if (data.status === 'completed' || data.status === 'failed') {
+                    if (uploadPollInterval) {
+                        clearInterval(uploadPollInterval);
+                        uploadPollInterval = null;
+                    }
+                    
+                    uploadStatusPanel.classList.add('hidden');
+                    showUploadResult(data);
+                    
+                    // Reload recipients since the file finished importing
+                    fetchRecipients();
+                }
+            } catch (err) {
+                console.error('Error checking upload status:', err);
+            }
+        }
+
+        function updateUploadProgress(percent, processed, total, text, status, valid = 0) {
+            uploadStatusText.textContent = text;
+            uploadStatusPercent.textContent = `${percent}%`;
+            uploadStatusBar.style.width = `${percent}%`;
+            uploadStatusDetails.textContent = `Rows: ${processed} / ${total}`;
+            uploadStatusValid.textContent = `Valid: ${valid}`;
+        }
+
+        function showUploadResult(data) {
+            uploadResultPanel.classList.remove('hidden');
+            
+            // Clear errors log
+            errorLogList.innerHTML = '';
+            errorLogContainer.classList.add('hidden');
+
+            if (data.status === 'completed') {
+                if (data.errors && data.errors.length > 0) {
+                    // Completed but with warnings
+                    resultStatusCard.className = "p-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.02] flex items-center justify-between gap-3";
+                    resultStatusIcon.className = "p-2 rounded-lg bg-amber-500/10 text-amber-400";
+                    resultStatusIcon.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5"></i>';
+                    
+                    resultTitle.textContent = "Import Completed with Warnings";
+                    resultDesc.textContent = `Successfully imported ${data.validCount} of ${data.totalRows} contacts. ${data.errors.length} rows failed validation.`;
+                    
+                    // Show errors log
+                    errorLogContainer.classList.remove('hidden');
+                    errorLogCount.textContent = `${data.errors.length} errors`;
+                    errorLogList.innerHTML = data.errors.map(err => `
+                        <div class="py-1 border-b border-white/[0.02] last:border-0">
+                            <span class="text-amber-400/90 font-semibold">[Row ${err.row}]</span> ${err.message}
+                        </div>
+                    `).join('');
+                    
+                    showToast(`Import completed with ${data.errors.length} errors`, 'error');
+                } else {
+                    // Success
+                    resultStatusCard.className = "p-4 rounded-xl border border-green-500/30 bg-green-500/[0.02] flex items-center justify-between gap-3";
+                    resultStatusIcon.className = "p-2 rounded-lg bg-green-500/10 text-green-400";
+                    resultStatusIcon.innerHTML = '<i data-lucide="check-circle" class="w-5 h-5"></i>';
+                    
+                    resultTitle.textContent = "Import Completed Successfully";
+                    resultDesc.textContent = `All ${data.validCount} contacts imported successfully!`;
+                    
+                    showToast(`Successfully imported ${data.validCount} contacts`, 'success');
+                }
+            } else {
+                // Failed
+                resultStatusCard.className = "p-4 rounded-xl border border-red-500/30 bg-red-500/[0.02] flex items-center justify-between gap-3";
+                resultStatusIcon.className = "p-2 rounded-lg bg-red-500/10 text-red-400";
+                resultStatusIcon.innerHTML = '<i data-lucide="x-circle" class="w-5 h-5"></i>';
+                
+                resultTitle.textContent = "Import Failed";
+                resultDesc.textContent = data.errors[0]?.message || "An unknown error occurred during parsing.";
+                
+                showToast("Spreadsheet import failed", "error");
+            }
+
+            lucide.createIcons({ root: resultStatusCard });
+        }
+
+        resetUploadBtn.onclick = async () => {
+            uploadResultPanel.classList.add('hidden');
+            try {
+                await fetch('/api/upload-status/reset', { method: 'POST' });
+            } catch (err) {}
+        };
+
         // ── Init ──
         fetchRecipients();
+        startPollingUploadStatus();
 
         // ── Poll for payout results & update summary bar ──
         async function pollResults() {
