@@ -953,7 +953,10 @@
 
         // ── Run Payout ──
         runBtn.onclick = async () => {
-            if (!confirm('Initiate bulk payout to all recipients? This will send real M-Pesa transfers.')) return;
+            const dryRun = document.getElementById('dry-run-toggle').checked;
+            const modeText = dryRun ? 'DRY RUN (Simulation)' : 'LIVE';
+            
+            if (!confirm(`Initiate bulk payout to all recipients? This will run in ${modeText} mode.`)) return;
 
             runBtn.disabled = true;
             runBtn.innerHTML = `
@@ -961,10 +964,17 @@
                 Processing...
             `;
 
-            showToast('Bulk payout process started');
+            // Reset stats counters for this run
+            statsSuccess = 0;
+            statsFailed = 0;
+            updatePayoutBar(0, 0);
+            statSent.textContent = 0;
+            statFailed.textContent = 0;
+
+            showToast(`Bulk payout started in ${modeText} mode`);
 
             try {
-                const res = await fetch('/api/payouts/run', { method: 'POST' });
+                const res = await fetch(`/api/payouts/run?dryRun=${dryRun}`, { method: 'POST' });
                 if (res.ok) {
                     showToast('Payout engine dispatched successfully');
                 } else {
@@ -1005,6 +1015,8 @@
         const errorLogCount = document.getElementById('error-log-count');
         const errorLogList = document.getElementById('error-log-list');
 
+        let activeTempFilePath = '';
+
         // ── Drag & Drop Event Listeners ──
         if (dropzone) {
             dropzone.onclick = () => excelInput.click();
@@ -1043,75 +1055,143 @@
             const formData = new FormData();
             formData.append('excelFile', file);
 
-            // Hide previous results
+            // Show loading state on dropzone
+            const originalContent = dropzone.innerHTML;
+            dropzone.innerHTML = `
+                <div class="flex flex-col items-center gap-3">
+                    <div class="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-sm font-medium text-white/80">Reading workbook structure...</p>
+                </div>
+            `;
+
+            // Clear panels
             uploadResultPanel.classList.add('hidden');
-            uploadStatusPanel.classList.remove('hidden');
-            updateUploadProgress(0, 0, 0, 'Uploading spreadsheet...', 'processing');
+            uploadStatusPanel.classList.add('hidden');
+            document.getElementById('mapping-panel').classList.add('hidden');
 
             try {
-                const res = await fetch('/api/upload-recipients', {
+                const res = await fetch('/api/upload-recipients/preview', {
                     method: 'POST',
                     body: formData
                 });
                 const data = await res.json();
                 
                 if (res.ok) {
-                    showToast(data.message);
-                    // Start polling
-                    startPollingUploadStatus();
+                    showToast('Workbook loaded successfully');
+                    setupMappingPanel(data.preview);
                 } else {
-                    showToast(data.error || 'Failed to upload spreadsheet', 'error');
-                    uploadStatusPanel.classList.add('hidden');
+                    showToast(data.error || 'Failed to parse workbook preview', 'error');
                 }
             } catch (err) {
-                showToast('Network error during upload', 'error');
-                uploadStatusPanel.classList.add('hidden');
+                showToast('Network error during preview upload', 'error');
+            } finally {
+                dropzone.innerHTML = originalContent;
+                lucide.createIcons({ root: dropzone });
             }
         }
 
-        let uploadPollInterval = null;
+        function setupMappingPanel(preview) {
+            activeTempFilePath = preview.tempFilePath;
+            
+            const sheetSelect = document.getElementById('map-sheet');
+            const phoneSelect = document.getElementById('map-phone');
+            const amountSelect = document.getElementById('map-amount');
+            const mappingPanel = document.getElementById('mapping-panel');
 
-        function startPollingUploadStatus() {
-            if (uploadPollInterval) clearInterval(uploadPollInterval);
-            uploadPollInterval = setInterval(checkUploadStatus, 1000);
-            checkUploadStatus();
+            // Populate sheets
+            sheetSelect.innerHTML = preview.sheetNames.map(name => `
+                <option value="${name}" ${name === preview.selectedSheet ? 'selected' : ''}>${name}</option>
+            `).join('');
+
+            // Populate columns dropdown based on the first row columns
+            const headers = preview.previewRows[0] || [];
+            const colOptions = headers.map((col, idx) => {
+                const label = col ? `Col ${idx + 1} (${col})` : `Col ${idx + 1}`;
+                return `<option value="${idx}">${label}</option>`;
+            }).join('');
+
+            phoneSelect.innerHTML = colOptions;
+            amountSelect.innerHTML = colOptions;
+
+            // Set auto-mapped indexes
+            phoneSelect.value = preview.autoMappedPhone;
+            amountSelect.value = preview.autoMappedAmount;
+
+            // Render Preview Table
+            renderPreviewGrid(preview.previewRows);
+
+            // Swap panels
+            dropzone.classList.add('hidden');
+            mappingPanel.classList.remove('hidden');
+
+            // Confirm Mapping event
+            const confirmBtn = document.getElementById('confirm-mapping-btn');
+            confirmBtn.onclick = async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<div class="w-4.5 h-4.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>';
+
+                try {
+                    const res = await fetch('/api/upload-recipients/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tempFilePath: activeTempFilePath,
+                            sheetName: sheetSelect.value,
+                            phoneColIndex: phoneSelect.value,
+                            amountColIndex: amountSelect.value,
+                            headerRowIndex: preview.headerRowIndex
+                        })
+                    });
+
+                    if (res.ok) {
+                        showToast('Started processing spreadsheet in background');
+                        mappingPanel.classList.add('hidden');
+                        dropzone.classList.remove('hidden');
+                        uploadStatusPanel.classList.remove('hidden');
+                    } else {
+                        const err = await res.json();
+                        showToast(err.error || 'Failed to start processing', 'error');
+                    }
+                } catch (e) {
+                    showToast('Network error starting processing', 'error');
+                }
+
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i data-lucide="play" class="w-3.5 h-3.5"></i> Process Contacts';
+                lucide.createIcons({ root: confirmBtn });
+            };
+
+            // Cancel button event
+            document.getElementById('cancel-mapping-btn').onclick = async () => {
+                mappingPanel.classList.add('hidden');
+                dropzone.classList.remove('hidden');
+                try {
+                    await fetch('/api/upload-status/reset', { method: 'POST' });
+                } catch (e) {}
+            };
+
+            lucide.createIcons({ root: mappingPanel });
         }
 
-        async function checkUploadStatus() {
-            try {
-                const res = await fetch('/api/upload-status');
-                const data = await res.json();
-
-                if (data.status === 'idle') {
-                    if (uploadPollInterval) {
-                        clearInterval(uploadPollInterval);
-                        uploadPollInterval = null;
-                    }
-                    uploadStatusPanel.classList.add('hidden');
-                    return;
-                }
-
-                if (data.status === 'processing') {
-                    uploadStatusPanel.classList.remove('hidden');
-                    uploadResultPanel.classList.add('hidden');
-                    
-                    const pct = data.totalRows > 0 ? Math.round((data.processedRows / data.totalRows) * 100) : 0;
-                    updateUploadProgress(pct, data.processedRows, data.totalRows, 'Processing contacts...', 'processing', data.validCount);
-                } else if (data.status === 'completed' || data.status === 'failed') {
-                    if (uploadPollInterval) {
-                        clearInterval(uploadPollInterval);
-                        uploadPollInterval = null;
-                    }
-                    
-                    uploadStatusPanel.classList.add('hidden');
-                    showUploadResult(data);
-                    
-                    // Reload recipients since the file finished importing
-                    fetchRecipients();
-                }
-            } catch (err) {
-                console.error('Error checking upload status:', err);
+        function renderPreviewGrid(rows) {
+            const table = document.getElementById('preview-table');
+            if (!rows || rows.length === 0) {
+                table.innerHTML = '<tr><td class="p-3 text-center text-white/30">No preview data available</td></tr>';
+                return;
             }
+
+            table.innerHTML = rows.map((row, rIdx) => {
+                const trClass = rIdx === 0 ? 'bg-white/5 border-b border-white/5 font-semibold text-white/70' : 'border-b border-white/[0.02] text-white/50';
+                return `
+                    <tr class="${trClass}">
+                        ${row.map(cell => `
+                            <td class="p-2 border-r border-white/5 truncate max-w-[150px]" title="${cell ?? ''}">
+                                ${cell ?? '<span class="text-white/10">NULL</span>'}
+                            </td>
+                        `).join('')}
+                    </tr>
+                `;
+            }).join('');
         }
 
         function updateUploadProgress(percent, processed, total, text, status, valid = 0) {
@@ -1129,46 +1209,57 @@
             errorLogList.innerHTML = '';
             errorLogContainer.classList.add('hidden');
 
+            const errors = data.errors || [];
+            const warningCount = errors.filter(e => e.type === 'warning').length;
+            const errorCount = errors.filter(e => e.type === 'error').length;
+
             if (data.status === 'completed') {
-                if (data.errors && data.errors.length > 0) {
-                    // Completed but with warnings
-                    resultStatusCard.className = "p-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.02] flex items-center justify-between gap-3";
-                    resultStatusIcon.className = "p-2 rounded-lg bg-amber-500/10 text-amber-400";
-                    resultStatusIcon.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5"></i>';
+                if (errors.length > 0) {
+                    const isPureWarnings = errorCount === 0;
+
+                    if (isPureWarnings) {
+                        resultStatusCard.className = "p-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.02] flex items-center justify-between gap-3";
+                        resultStatusIcon.className = "p-2 rounded-lg bg-amber-500/10 text-amber-400";
+                        resultStatusIcon.innerHTML = '<i data-lucide="alert-triangle" class="w-5 h-5"></i>';
+                        resultTitle.textContent = "Import Completed with Warnings";
+                        resultDesc.textContent = `Imported ${data.validCount} contacts. Duplicate/double-payments detected (${warningCount} warnings).`;
+                    } else {
+                        resultStatusCard.className = "p-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.02] flex items-center justify-between gap-3";
+                        resultStatusIcon.className = "p-2 rounded-lg bg-amber-500/10 text-amber-400";
+                        resultStatusIcon.innerHTML = '<i data-lucide="alert-circle" class="w-5 h-5"></i>';
+                        resultTitle.textContent = "Import Completed with Failures";
+                        resultDesc.textContent = `Successfully imported ${data.validCount} of ${data.totalRows} contacts. ${errorCount} rows rejected, ${warningCount} warnings.`;
+                    }
                     
-                    resultTitle.textContent = "Import Completed with Warnings";
-                    resultDesc.textContent = `Successfully imported ${data.validCount} of ${data.totalRows} contacts. ${data.errors.length} rows failed validation.`;
-                    
-                    // Show errors log
+                    // Show warning/error log console
                     errorLogContainer.classList.remove('hidden');
-                    errorLogCount.textContent = `${data.errors.length} errors`;
-                    errorLogList.innerHTML = data.errors.map(err => `
-                        <div class="py-1 border-b border-white/[0.02] last:border-0">
-                            <span class="text-amber-400/90 font-semibold">[Row ${err.row}]</span> ${err.message}
-                        </div>
-                    `).join('');
+                    errorLogCount.textContent = `${errors.length} alerts`;
+                    errorLogList.innerHTML = errors.map(err => {
+                        const isWarning = err.type === 'warning';
+                        const badgeColor = isWarning ? 'text-amber-400/90' : 'text-red-400/90';
+                        const badgeLabel = isWarning ? '[Warning]' : `[Row ${err.row}]`;
+                        return `
+                            <div class="py-1 border-b border-white/[0.02] last:border-0">
+                                <span class="${badgeColor} font-semibold">${badgeLabel}</span> ${err.message}
+                            </div>
+                        `;
+                    }).join('');
                     
-                    showToast(`Import completed with ${data.errors.length} errors`, 'error');
+                    showToast(`Import finished with ${errors.length} alerts`, 'error');
                 } else {
-                    // Success
                     resultStatusCard.className = "p-4 rounded-xl border border-green-500/30 bg-green-500/[0.02] flex items-center justify-between gap-3";
                     resultStatusIcon.className = "p-2 rounded-lg bg-green-500/10 text-green-400";
                     resultStatusIcon.innerHTML = '<i data-lucide="check-circle" class="w-5 h-5"></i>';
-                    
                     resultTitle.textContent = "Import Completed Successfully";
                     resultDesc.textContent = `All ${data.validCount} contacts imported successfully!`;
-                    
                     showToast(`Successfully imported ${data.validCount} contacts`, 'success');
                 }
             } else {
-                // Failed
                 resultStatusCard.className = "p-4 rounded-xl border border-red-500/30 bg-red-500/[0.02] flex items-center justify-between gap-3";
                 resultStatusIcon.className = "p-2 rounded-lg bg-red-500/10 text-red-400";
                 resultStatusIcon.innerHTML = '<i data-lucide="x-circle" class="w-5 h-5"></i>';
-                
                 resultTitle.textContent = "Import Failed";
-                resultDesc.textContent = data.errors[0]?.message || "An unknown error occurred during parsing.";
-                
+                resultDesc.textContent = errors[0]?.message || "An unknown error occurred during parsing.";
                 showToast("Spreadsheet import failed", "error");
             }
 
@@ -1182,30 +1273,103 @@
             } catch (err) {}
         };
 
+        // ── Server-Sent Events (SSE) Live Update Connection ──
+        let eventSource = null;
+
+        function connectSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/events');
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload.type === 'upload-status') {
+                        handleUploadStatusEvent(payload.data);
+                    } else if (payload.type === 'payout-log') {
+                        handlePayoutLogEvent(payload.data);
+                    }
+                } catch (e) {
+                    console.error('Error parsing SSE event data:', e);
+                }
+            };
+
+            eventSource.onerror = (e) => {
+                console.warn('SSE connection lost. Retrying in 5 seconds...', e);
+                eventSource.close();
+                setTimeout(connectSSE, 5000);
+            };
+        }
+
+        function handleUploadStatusEvent(data) {
+            if (data.status === 'idle') {
+                uploadStatusPanel.classList.add('hidden');
+                return;
+            }
+
+            if (data.status === 'processing') {
+                uploadStatusPanel.classList.remove('hidden');
+                uploadResultPanel.classList.add('hidden');
+                document.getElementById('mapping-panel').classList.add('hidden');
+                
+                const pct = data.totalRows > 0 ? Math.round((data.processedRows / data.totalRows) * 100) : 0;
+                updateUploadProgress(pct, data.processedRows, data.totalRows, 'Processing contacts...', 'processing', data.validCount);
+            } else if (data.status === 'completed' || data.status === 'failed') {
+                uploadStatusPanel.classList.add('hidden');
+                showUploadResult(data);
+                fetchRecipients();
+            }
+        }
+
+        function handlePayoutLogEvent(logLine) {
+            if (logLine.includes('SUCCESS') || logLine.includes('CALLBACK') || logLine.includes('DRY-RUN-INITIATED')) {
+                statsSuccess++;
+                statSent.textContent = statsSuccess;
+                updatePayoutBar(statsSuccess, statsFailed);
+            } else if (logLine.includes('ERROR') || logLine.includes('DRY-RUN-ERROR')) {
+                statsFailed++;
+                statFailed.textContent = statsFailed;
+                updatePayoutBar(statsSuccess, statsFailed);
+            }
+            
+            // Generate user-facing Toast alerts for individual background transfers
+            if (logLine.includes('INITIATED')) {
+                const phoneMatch = logLine.match(/Phone:\s*(\d+)/);
+                const amountMatch = logLine.match(/Amount:\s*([\d.]+)/);
+                if (phoneMatch && amountMatch) {
+                    showToast(`Disbursement initiated: ${phoneMatch[1]} (KES ${amountMatch[1]})`);
+                }
+            } else if (logLine.includes('DRY-RUN-INITIATED')) {
+                const phoneMatch = logLine.match(/Phone:\s*(\d+)/);
+                const amountMatch = logLine.match(/Amount:\s*([\d.]+)/);
+                if (phoneMatch && amountMatch) {
+                    showToast(`[Dry Run] Simulated: ${phoneMatch[1]} (KES ${amountMatch[1]})`, 'success');
+                }
+            } else if (logLine.includes('DRY-RUN-ERROR') || logLine.includes('ERROR')) {
+                const errorMatch = logLine.match(/Error:\s*(.+)/);
+                if (errorMatch) {
+                    showToast(`Payout Error: ${errorMatch[1].substring(0, 45)}...`, 'error');
+                }
+            }
+        }
+
+        // Active checking helper in case user refreshes during parsing
+        async function checkInitialStatus() {
+            try {
+                const res = await fetch('/api/upload-status');
+                const data = await res.json();
+                if (data.status === 'processing') {
+                    handleUploadStatusEvent(data);
+                }
+            } catch (err) {}
+        }
+
         // ── Init ──
         fetchRecipients();
-        startPollingUploadStatus();
-
-        // ── Poll for payout results & update summary bar ──
-        async function pollResults() {
-            try {
-                const res = await fetch('/api/logs');
-                const logs = await res.json();
-                let newSuccess = 0, newFailed = 0;
-                logs.forEach(log => {
-                    if (log.includes('SUCCESS') || log.includes('CALLBACK')) newSuccess++;
-                    if (log.includes('ERROR')) newFailed++;
-                });
-                if (newSuccess > statsSuccess || newFailed > statsFailed) {
-                    statsSuccess = Math.max(statsSuccess, newSuccess);
-                    statsFailed = Math.max(statsFailed, newFailed);
-                    statSent.textContent = statsSuccess;
-                    statFailed.textContent = statsFailed;
-                    updatePayoutBar(statsSuccess, statsFailed);
-                }
-            } catch (e) {}
-        }
-        setInterval(pollResults, 4000);
+        connectSSE();
+        checkInitialStatus();
     </script>
 </body>
 </html>
