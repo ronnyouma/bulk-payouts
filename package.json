@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "M-Pesa Bulk Payout System using Payhero",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "send": "node bulk-send.js"

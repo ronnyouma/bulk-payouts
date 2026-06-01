@@ -14,10 +14,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Ensure uploads directory exists inside the workspace
+// Ensure required directories exist (Render has an ephemeral filesystem)
 const uploadsDir = path.join(__dirname, 'uploads');
+const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
 }
 
 // Multer configuration for file uploads

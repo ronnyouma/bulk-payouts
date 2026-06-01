@@ -1,0 +1,25 @@
+# Render Blueprint — Bulk Payouts (M-Pesa B2C via Payhero)
+# Auto-deploys on every push to the default branch.
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: bulk-payouts
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render Dashboard (never commit secrets):
+      - key: PAYHERO_API_USERNAME
+        sync: false
+      - key: PAYHERO_API_PASSWORD
+        sync: false
+      - key: PAYHERO_CHANNEL_ID
+        sync: false
+      - key: PAYHERO_CALLBACK_URL
+        sync: false
