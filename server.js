@@ -67,6 +67,27 @@ app.post('/api/callback', (req, res) => {
  * UI API Endpoints
  */
 
+// Test Payhero API connection
+app.get('/api/connection/test', async (req, res) => {
+    try {
+        const balanceData = await payheroService.getBalance();
+        res.json({
+            success: true,
+            connected: true,
+            balance: parseFloat(balanceData.wallet_balance || balanceData.balance || 0),
+            details: balanceData
+        });
+    } catch (error) {
+        const errorMessage = (error.response && error.response.data && error.response.data.message) || error.message || JSON.stringify(error);
+        console.error('Payhero connection test failed:', errorMessage);
+        res.json({
+            success: true,
+            connected: false,
+            error: errorMessage
+        });
+    }
+});
+
 // Get wallet balance
 app.get('/api/balance', async (req, res) => {
     try {

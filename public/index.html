@@ -740,8 +740,27 @@
                         </div>
                     </section>
 
-                    <!-- Disbursement Summary -->
+                    <!-- API Connection Test -->
                     <section class="glass p-5 animate-in animate-in-delay-4">
+                        <div class="flex items-center gap-2.5 mb-4">
+                            <div class="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                                <i data-lucide="radio" class="w-4 h-4"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-white">API Connection</h3>
+                        </div>
+
+                        <button id="test-connection-btn" class="btn-primary w-full justify-center">
+                            <i data-lucide="activity" class="w-4 h-4"></i>
+                            Test Payhero Connection
+                        </button>
+
+                        <div id="connection-result" class="hidden mt-4 p-3 rounded-xl border text-xs space-y-2">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </section>
+
+                    <!-- Disbursement Summary -->
+                    <section class="glass p-5 animate-in animate-in-delay-5">
                         <div class="flex items-center gap-2.5 mb-4">
                             <div class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
                                 <i data-lucide="chart-pie" class="w-4 h-4"></i>
@@ -1469,6 +1488,59 @@
         connectSSE();
         checkInitialStatus();
         fetchWalletBalance();
+
+        // ── Test Payhero Connection ──
+        document.getElementById('test-connection-btn').onclick = async () => {
+            const btn = document.getElementById('test-connection-btn');
+            const resultDiv = document.getElementById('connection-result');
+
+            btn.disabled = true;
+            btn.innerHTML = '<div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Testing...';
+            resultDiv.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/connection/test');
+                const data = await res.json();
+
+                resultDiv.classList.remove('hidden');
+
+                if (data.connected) {
+                    resultDiv.className = 'mt-4 p-3 rounded-xl border border-green-500/30 bg-green-500/[0.02] text-xs space-y-2';
+                    resultDiv.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                            <span class="font-semibold text-green-400">Connected</span>
+                        </div>
+                        <p class="text-white/60">Real balance: KES ${Number(data.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    `;
+                    fetchWalletBalance();
+                } else {
+                    resultDiv.className = 'mt-4 p-3 rounded-xl border border-red-500/30 bg-red-500/[0.02] text-xs space-y-2';
+                    resultDiv.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                            <span class="font-semibold text-red-400">Connection Failed</span>
+                        </div>
+                        <p class="text-red-300/80 font-mono leading-relaxed">${data.error}</p>
+                        <p class="text-white/30 text-[10px]">Check your Render env vars and Payhero credentials.</p>
+                    `;
+                }
+            } catch (err) {
+                resultDiv.classList.remove('hidden');
+                resultDiv.className = 'mt-4 p-3 rounded-xl border border-red-500/30 bg-red-500/[0.02] text-xs space-y-2';
+                resultDiv.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                        <span class="font-semibold text-red-400">Network Error</span>
+                    </div>
+                    <p class="text-red-300/80 font-mono">${err.message}</p>
+                `;
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="activity" class="w-4 h-4"></i> Test Payhero Connection';
+            lucide.createIcons({ root: btn });
+        };
 
         // Hook Dry Run toggle to recalculate balance sufficiency
         const dryRunToggle = document.getElementById('dry-run-toggle');
