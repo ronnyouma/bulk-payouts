@@ -24,7 +24,7 @@ class PayheroService {
             external_reference: reference,
             payment_service: "b2c",
             channel: "mobile",
-            channel_id: config.channelId,
+            channel_id: parseInt(config.channelId, 10) || config.channelId,
             callback_url: config.callbackUrl
         };
 
@@ -41,7 +41,7 @@ class PayheroService {
      */
     async getBalance() {
         try {
-            const response = await this.client.get(`/payment_channels/${config.channelId}`);
+            const response = await this.client.get('/wallets');
             return response.data;
         } catch (error) {
             throw error.response ? error.response.data : error;

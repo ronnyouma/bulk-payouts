@@ -74,7 +74,7 @@ app.get('/api/connection/test', async (req, res) => {
         res.json({
             success: true,
             connected: true,
-            balance: parseFloat(balanceData.wallet_balance || balanceData.balance || 0),
+            balance: parseFloat(balanceData.available_balance || 0),
             details: balanceData
         });
     } catch (error) {
@@ -94,7 +94,7 @@ app.get('/api/balance', async (req, res) => {
         const balanceData = await payheroService.getBalance();
         res.json({
             success: true,
-            balance: parseFloat(balanceData.wallet_balance || balanceData.balance || 0),
+            balance: parseFloat(balanceData.available_balance || 0),
             details: balanceData
         });
     } catch (error) {
