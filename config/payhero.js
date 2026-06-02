@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 module.exports = {
     username: process.env.PAYHERO_API_USERNAME,
