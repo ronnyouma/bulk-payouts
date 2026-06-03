@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const payheroService = require('./services/payheroService');
+const darajaService = require('./services/darajaService');
 const { normalizePhone } = require('./utils/validator');
 
 const recipientsFile = path.join(__dirname, 'recipients.json');
@@ -22,7 +22,7 @@ async function processBulkPayouts() {
         console.log(`Sending KES ${recipient.amount} to ${cleanPhone}...`);
 
         try {
-            const result = await payheroService.withdraw({
+            const result = await darajaService.withdraw({
                 amount: recipient.amount,
                 phone: cleanPhone,
                 reference: reference

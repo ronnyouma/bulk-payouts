@@ -516,7 +516,7 @@
                 </div>
                 <div>
                     <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">Bulk Payout</h1>
-                    <p class="text-[0.6rem] sm:text-xs text-white/40 font-medium">M-Pesa B2C · Payhero Gateway</p>
+                    <p class="text-[0.6rem] sm:text-xs text-white/40 font-medium">M-Pesa B2C · Daraja Gateway</p>
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-wrap justify-center sm:justify-end">
@@ -526,10 +526,9 @@
                         <i data-lucide="wallet" class="w-3.5 h-3.5 text-green-400"></i>
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-[0.55rem] text-white/30 uppercase tracking-widest leading-none mb-1">Live Balance</span>
+                        <span class="text-[0.55rem] text-white/30 uppercase tracking-widest leading-none mb-1">Daraja Status</span>
                         <div class="flex items-center gap-1.5">
-                            <span id="header-balance" class="font-mono text-white text-sm leading-none tabular-nums">KES 0.00</span>
-                            <span id="balance-mocked-badge" class="hidden text-[7px] bg-white/10 text-white/40 px-1 py-0.5 rounded font-bold uppercase tracking-tighter">Mock</span>
+                            <span id="header-balance" class="font-mono text-white text-sm leading-none tabular-nums">Checking</span>
                         </div>
                     </div>
                 </div>
@@ -706,7 +705,7 @@
                             </div>
                             <h2 class="text-lg font-semibold text-white">Process Payouts</h2>
                         </div>
-                        <p class="text-sm text-white/40 mb-6">Initiate bulk B2C transfers to all recipients in the list via Payhero.</p>
+                        <p class="text-sm text-white/40 mb-6">Initiate bulk B2C transfers to all recipients in the list via Daraja.</p>
 
                         <!-- Dry Run Toggle -->
                         <div class="flex items-center justify-center gap-2 mb-6 p-3 rounded-xl bg-white/[0.02] border border-white/5">
@@ -751,7 +750,7 @@
 
                         <button id="test-connection-btn" class="btn-primary w-full justify-center">
                             <i data-lucide="activity" class="w-4 h-4"></i>
-                            Test Payhero Connection
+                            Test Daraja Connection
                         </button>
 
                         <div id="connection-result" class="hidden mt-4 p-3 rounded-xl border text-xs space-y-2">
@@ -809,7 +808,7 @@
         <!-- Footer -->
         <footer class="text-center py-6 animate-in animate-in-delay-5">
             <p class="text-xs text-white/20">
-                Powered by <span class="text-white/30">Payhero API</span> &middot; M-Pesa B2C
+                Powered by <span class="text-white/30">Daraja API</span> &middot; M-Pesa B2C
             </p>
         </footer>
     </div>
@@ -841,7 +840,7 @@
         let statsSuccess = 0;
         let statsFailed = 0;
         let totalPayoutAmount = 0;
-        let walletBalance = 0;
+        let walletBalance = null;
         // ── Toast system ──
         function showToast(message, type = 'success') {
             const toast = document.createElement('div');
@@ -1036,7 +1035,8 @@
                 if (res.ok) {
                     showToast('Payout engine dispatched successfully');
                 } else {
-                    showToast('Failed to trigger payout engine', 'error');
+                    const data = await res.json().catch(() => ({}));
+                    showToast(data.error || 'Failed to trigger payout engine', 'error');
                 }
             } catch (err) {
                 showToast('Network error: ' + err.message, 'error');
@@ -1415,33 +1415,21 @@
             }
         }
 
-        // ── Wallet Balance Management ──
+        // ── Daraja Status Management ──
         function checkBalanceSufficiency() {
-            const dryRun = document.getElementById('dry-run-toggle')?.checked ?? false;
             const runBtn = document.getElementById('run-payout');
-            
-            if (!dryRun && totalPayoutAmount > walletBalance) {
-                runBtn.disabled = true;
-                runBtn.classList.add('opacity-40', 'cursor-not-allowed');
-                runBtn.title = "Insufficient wallet balance to cover payout";
-                
-                let balanceWarning = document.getElementById('balance-warning-text');
-                if (!balanceWarning) {
-                    balanceWarning = document.createElement('p');
-                    balanceWarning.id = 'balance-warning-text';
-                    balanceWarning.className = 'text-[10px] text-red-400 font-semibold mt-3 text-center animate-pulse';
-                    runBtn.parentNode.insertBefore(balanceWarning, runBtn.nextSibling);
-                }
-                const required = (totalPayoutAmount - walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2 });
-                balanceWarning.textContent = `Insufficient funds. Deposit KES ${required} to proceed.`;
-            } else {
-                runBtn.disabled = false;
-                runBtn.classList.remove('opacity-40', 'cursor-not-allowed');
-                runBtn.removeAttribute('title');
-                
-                const balanceWarning = document.getElementById('balance-warning-text');
-                if (balanceWarning) balanceWarning.remove();
+            runBtn.disabled = false;
+            runBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+            runBtn.removeAttribute('title');
+
+            let balanceWarning = document.getElementById('balance-warning-text');
+            if (!balanceWarning) {
+                balanceWarning = document.createElement('p');
+                balanceWarning.id = 'balance-warning-text';
+                balanceWarning.className = 'text-[10px] text-amber-300/80 font-semibold mt-3 text-center';
+                runBtn.parentNode.insertBefore(balanceWarning, runBtn.nextSibling);
             }
+            balanceWarning.textContent = 'Confirm B2C float in M-Pesa/Daraja before live payouts.';
         }
 
         async function fetchWalletBalance() {
@@ -1449,20 +1437,11 @@
                 const res = await fetch('/api/balance');
                 const data = await res.json();
                 if (data.success) {
-                    walletBalance = data.balance;
+                    walletBalance = data.balance ?? null;
                     
                     const balanceElement = document.getElementById('header-balance');
                     if (balanceElement) {
-                        balanceElement.textContent = `KES ${walletBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    }
-                    
-                    const badge = document.getElementById('balance-mocked-badge');
-                    if (badge) {
-                        if (data.mocked) {
-                            badge.classList.remove('hidden');
-                        } else {
-                            badge.classList.add('hidden');
-                        }
+                        balanceElement.textContent = data.balanceAvailable ? `KES ${Number(walletBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Connected';
                     }
 
                     checkBalanceSufficiency();
@@ -1489,7 +1468,7 @@
         checkInitialStatus();
         fetchWalletBalance();
 
-        // ── Test Payhero Connection ──
+        // ── Test Daraja Connection ──
         document.getElementById('test-connection-btn').onclick = async () => {
             const btn = document.getElementById('test-connection-btn');
             const resultDiv = document.getElementById('connection-result');
@@ -1511,7 +1490,8 @@
                             <span class="w-2 h-2 rounded-full bg-green-400"></span>
                             <span class="font-semibold text-green-400">Connected</span>
                         </div>
-                        <p class="text-white/60">Real balance: KES ${Number(data.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p class="text-white/60">OAuth token generated successfully.</p>
+                        <p class="text-white/30 text-[10px]">Daraja B2C balance is asynchronous; confirm float before live payouts.</p>
                     `;
                     fetchWalletBalance();
                 } else {
@@ -1522,7 +1502,7 @@
                             <span class="font-semibold text-red-400">Connection Failed</span>
                         </div>
                         <p class="text-red-300/80 font-mono leading-relaxed">${data.error}</p>
-                        <p class="text-white/30 text-[10px]">Check your Render env vars and Payhero credentials.</p>
+                        <p class="text-white/30 text-[10px]">Check your Render env vars and Daraja credentials.</p>
                     `;
                 }
             } catch (err) {
@@ -1538,7 +1518,7 @@
             }
 
             btn.disabled = false;
-            btn.innerHTML = '<i data-lucide="activity" class="w-4 h-4"></i> Test Payhero Connection';
+            btn.innerHTML = '<i data-lucide="activity" class="w-4 h-4"></i> Test Daraja Connection';
             lucide.createIcons({ root: btn });
         };
 

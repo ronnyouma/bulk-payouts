@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const payheroService = require('./payheroService');
+const darajaService = require('./darajaService');
 const { normalizePhone } = require('../utils/validator');
 const appEmitter = require('../utils/emitter');
 
@@ -67,7 +67,7 @@ class PayoutService {
                 }
             } else {
                 try {
-                    const result = await payheroService.withdraw({
+                    const result = await darajaService.withdraw({
                         amount: recipient.amount,
                         phone: cleanPhone,
                         reference: reference

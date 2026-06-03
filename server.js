@@ -6,7 +6,7 @@ const multer = require('multer');
 require('dotenv').config();
 const payoutService = require('./services/payoutService');
 const excelService = require('./services/excelService');
-const payheroService = require('./services/payheroService');
+const darajaService = require('./services/darajaService');
 const appEmitter = require('./utils/emitter');
 
 const app = express();
@@ -49,17 +49,31 @@ const upload = multer({
 const PORT = process.env.PORT || 3000;
 const logFile = path.join(__dirname, 'logs', 'payouts.log');
 
+function logDarajaCallback(type, payload) {
+    console.log(`Received Daraja ${type}:`, payload);
+
+    const logEntry = `${new Date().toISOString()} - ${type} - ${JSON.stringify(payload)}\n`;
+    fs.appendFileSync(logFile, logEntry);
+    appEmitter.emit('payout-log', logEntry);
+}
+
 /**
- * Payhero Callback Listener
+ * Daraja B2C Callback Listeners
  */
+app.post('/api/b2c/result', (req, res) => {
+    logDarajaCallback('B2C-RESULT', req.body);
+    res.json({ success: true });
+});
+
+app.post('/api/b2c/timeout', (req, res) => {
+    logDarajaCallback('B2C-TIMEOUT', req.body);
+    res.json({ success: true });
+});
+
+// Compatibility alias for older callback configuration.
 app.post('/api/callback', (req, res) => {
     const callbackData = req.body;
-    console.log('Received Payhero Callback:', callbackData);
-
-    // Log the result
-    const logEntry = `${new Date().toISOString()} - CALLBACK - ${JSON.stringify(callbackData)}\n`;
-    fs.appendFileSync(logFile, logEntry);
-
+    logDarajaCallback('CALLBACK', callbackData);
     res.json({ success: true });
 });
 
@@ -67,19 +81,19 @@ app.post('/api/callback', (req, res) => {
  * UI API Endpoints
  */
 
-// Test Payhero API connection
+// Test Daraja API connection
 app.get('/api/connection/test', async (req, res) => {
     try {
-        const balanceData = await payheroService.getBalance();
+        const connection = await darajaService.testConnection();
         res.json({
             success: true,
             connected: true,
-            balance: parseFloat(balanceData.available_balance || 0),
-            details: balanceData
+            balance: null,
+            details: connection
         });
     } catch (error) {
         const errorMessage = (error.response && error.response.data && error.response.data.message) || error.message || JSON.stringify(error);
-        console.error('Payhero connection test failed:', errorMessage);
+        console.error('Daraja connection test failed:', errorMessage);
         res.json({
             success: true,
             connected: false,
@@ -91,19 +105,19 @@ app.get('/api/connection/test', async (req, res) => {
 // Get wallet balance
 app.get('/api/balance', async (req, res) => {
     try {
-        const balanceData = await payheroService.getBalance();
+        const balanceData = await darajaService.getBalance();
         res.json({
             success: true,
-            balance: parseFloat(balanceData.available_balance || 0),
+            balance: null,
+            balanceAvailable: false,
             details: balanceData
         });
     } catch (error) {
-        // Fallback for local sandboxed sandbox environments
-        res.json({
-            success: true,
-            balance: 457800.50,
-            mocked: true,
-            error: error.message || JSON.stringify(error)
+        const errorMessage = (error.response && error.response.data && error.response.data.message) || error.message || JSON.stringify(error);
+        res.status(503).json({
+            success: false,
+            balance: 0,
+            error: errorMessage
         });
     }
 });
@@ -161,6 +175,10 @@ app.get('/api/logs', (req, res) => {
 app.post('/api/payouts/run', async (req, res) => {
     try {
         const dryRun = req.body.dryRun === true || req.query.dryRun === 'true';
+        if (!dryRun) {
+            await darajaService.testConnection();
+        }
+
         // Trigger in background to avoid timeout
         payoutService.processBulkPayouts(dryRun).catch(console.error);
         res.json({ success: true, message: `Bulk payout process started in ${dryRun ? 'Dry Run' : 'Live'} mode` });
