@@ -33,10 +33,12 @@ class PayoutService {
         for (const recipient of recipients) {
             const cleanPhone = normalizePhone(recipient.phone);
             const reference = `PROM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const amount = Number(recipient.amount);
+            const amountValue = Math.round(amount);
             const transactionRecord = {
                 reference,
                 phone: cleanPhone || recipient.phone,
-                amount: Number(recipient.amount),
+                amount: amountValue,
                 status: dryRun ? 'SIMULATED' : 'PENDING',
                 dryRun,
                 createdAt: new Date().toISOString(),
@@ -58,39 +60,39 @@ class PayoutService {
                 continue;
             }
 
+            if (!Number.isFinite(amount) || !Number.isInteger(amountValue) || amountValue < 10 || amountValue > 150000) {
+                results.failed++;
+                const errorMsg = 'Amount must be a whole number between KES 10 and KES 150,000';
+                transactionStore.append({
+                    ...transactionRecord,
+                    status: 'FAILED',
+                    errorMessage: errorMsg
+                });
+                const logEntry = `${new Date().toISOString()} - ${dryRun ? 'DRY-RUN-ERROR' : 'ERROR'} - Phone: ${cleanPhone}, Error: ${errorMsg}\n`;
+                fs.appendFileSync(logFile, logEntry);
+                appEmitter.emit('payout-log', logEntry);
+                results.details.push({ phone: cleanPhone, status: 'ERROR', message: errorMsg });
+                continue;
+            }
+
             if (dryRun) {
                 transactionStore.append(transactionRecord);
-                // Simulate M-Pesa limits: Min 10, Max 150000 KES
-                if (recipient.amount < 10) {
-                    const logEntry = `${new Date().toISOString()} - DRY-RUN-ERROR - Phone: ${cleanPhone}, Error: KES ${recipient.amount} is below the M-Pesa minimum of KES 10\n`;
-                    fs.appendFileSync(logFile, logEntry);
-                    appEmitter.emit('payout-log', logEntry);
-                    results.failed++;
-                    results.details.push({ phone: cleanPhone, status: 'ERROR', message: 'Below KES 10' });
-                } else if (recipient.amount > 150000) {
-                    const logEntry = `${new Date().toISOString()} - DRY-RUN-ERROR - Phone: ${cleanPhone}, Error: KES ${recipient.amount} exceeds the M-Pesa maximum of KES 150,000\n`;
-                    fs.appendFileSync(logFile, logEntry);
-                    appEmitter.emit('payout-log', logEntry);
-                    results.failed++;
-                    results.details.push({ phone: cleanPhone, status: 'ERROR', message: 'Exceeds KES 150,000' });
-                } else {
-                    const mockResult = { success: true, message: "Dry Run Simulation Success" };
-                    const logEntry = `${new Date().toISOString()} - DRY-RUN-INITIATED - Ref: ${reference}, Phone: ${cleanPhone}, Amount: ${recipient.amount}, Result: ${JSON.stringify(mockResult)}\n`;
-                    fs.appendFileSync(logFile, logEntry);
-                    appEmitter.emit('payout-log', logEntry);
-                    transactionStore.updateByReference(reference, {
-                        status: 'SIMULATED_SUCCESS',
-                        requestResponse: mockResult
-                    });
-                    results.success++;
-                    results.details.push({ phone: cleanPhone, status: 'SUCCESS', reference });
-                }
+                const mockResult = { success: true, message: 'Dry Run Simulation Success' };
+                const logEntry = `${new Date().toISOString()} - DRY-RUN-INITIATED - Ref: ${reference}, Phone: ${cleanPhone}, Amount: ${amountValue}, Result: ${JSON.stringify(mockResult)}\n`;
+                fs.appendFileSync(logFile, logEntry);
+                appEmitter.emit('payout-log', logEntry);
+                transactionStore.updateByReference(reference, {
+                    status: 'SIMULATED_SUCCESS',
+                    requestResponse: mockResult
+                });
+                results.success++;
+                results.details.push({ phone: cleanPhone, status: 'SUCCESS', reference });
             } else {
                 try {
                     transactionStore.append(transactionRecord);
 
                     const result = await darajaService.withdraw({
-                        amount: recipient.amount,
+                        amount: amountValue,
                         phone: cleanPhone,
                         reference: reference
                     });
