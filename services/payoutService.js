@@ -93,7 +93,7 @@ class PayoutService {
 
                     const result = await darajaService.withdraw({
                         amount: amountValue,
-                        phone: cleanPhone,
+                        requester: cleanPhone,
                         reference: reference
                     });
 

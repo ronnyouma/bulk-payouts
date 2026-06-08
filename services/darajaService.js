@@ -1,8 +1,6 @@
 const axios = require('axios');
 const config = require('../config/daraja');
 
-const BASE_URL = "https://sandbox.safaricom.co.ke";
-
 class DarajaService {
     constructor() {
         this.client = axios.create({
@@ -25,6 +23,8 @@ class DarajaService {
             if (!config.initiatorName) missing.push('DARAJA_INITIATOR_NAME');
             if (!config.securityCredential) missing.push('DARAJA_SECURITY_CREDENTIAL');
             if (!config.shortcode) missing.push('DARAJA_SHORTCODE');
+            if (!config.partyB) missing.push('DARAJA_PARTY_B');
+            if (!config.accountReference) missing.push('DARAJA_ACCOUNT_REFERENCE');
             if (!config.resultUrl) missing.push('DARAJA_RESULT_URL');
             if (!config.timeoutUrl) missing.push('DARAJA_TIMEOUT_URL');
         }
@@ -79,26 +79,29 @@ class DarajaService {
     /**
      * Initiates an M-Pesa B2C payout from a Daraja shortcode to a customer phone.
      */
-    async withdraw({ amount, phone, reference }) {
+    async withdraw({ amount, requester, reference }) {
         this.validateConfig(true);
 
         const token = await this.getAccessToken();
         const amountValue = Math.round(Number(amount));
         const payload = {
-            InitiatorName: config.initiatorName,
+            Initiator: config.initiatorName,
             SecurityCredential: config.securityCredential,
             CommandID: config.commandId,
-            Amount: amountValue,
+            SenderIdentifierType: config.senderIdentifierType,
+            RecieverIdentifierType: config.receiverIdentifierType,
+            Amount: String(amountValue),
             PartyA: Number(config.shortcode) || config.shortcode,
-            PartyB: Number(phone) || phone,
-            Remarks: reference || 'Bulk payout',
+            PartyB: Number(config.partyB) || config.partyB,
+            AccountReference: config.accountReference,
+            Requester: requester || config.requester,
+            Remarks: config.remarks || reference || 'OK',
             QueueTimeOutURL: config.timeoutUrl,
-            ResultURL: config.resultUrl,
-            Occassion: reference || 'Bulk payout'
+            ResultURL: config.resultUrl
         };
 
         try {
-            const response = await this.client.post('`$BASE_URL`/mpesa/b2c/v1/paymentrequest', payload, {
+            const response = await this.client.post('/mpesa/b2c/v1/paymentrequest', payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
