@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const darajaService = require('./darajaService');
+const transactionStore = require('./transactionStore');
 const { normalizePhone } = require('../utils/validator');
 const appEmitter = require('../utils/emitter');
 
@@ -32,10 +33,24 @@ class PayoutService {
         for (const recipient of recipients) {
             const cleanPhone = normalizePhone(recipient.phone);
             const reference = `PROM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const transactionRecord = {
+                reference,
+                phone: cleanPhone || recipient.phone,
+                amount: Number(recipient.amount),
+                status: dryRun ? 'SIMULATED' : 'PENDING',
+                dryRun,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
 
             if (!cleanPhone) {
                 results.failed++;
                 const errorMsg = 'Invalid phone number';
+                transactionStore.append({
+                    ...transactionRecord,
+                    status: 'FAILED',
+                    errorMessage: errorMsg
+                });
                 const logEntry = `${new Date().toISOString()} - ${dryRun ? 'DRY-RUN-ERROR' : 'ERROR'} - Phone: ${recipient.phone}, Error: ${errorMsg}\n`;
                 fs.appendFileSync(logFile, logEntry);
                 appEmitter.emit('payout-log', logEntry);
@@ -44,6 +59,7 @@ class PayoutService {
             }
 
             if (dryRun) {
+                transactionStore.append(transactionRecord);
                 // Simulate M-Pesa limits: Min 10, Max 150000 KES
                 if (recipient.amount < 10) {
                     const logEntry = `${new Date().toISOString()} - DRY-RUN-ERROR - Phone: ${cleanPhone}, Error: KES ${recipient.amount} is below the M-Pesa minimum of KES 10\n`;
@@ -62,15 +78,32 @@ class PayoutService {
                     const logEntry = `${new Date().toISOString()} - DRY-RUN-INITIATED - Ref: ${reference}, Phone: ${cleanPhone}, Amount: ${recipient.amount}, Result: ${JSON.stringify(mockResult)}\n`;
                     fs.appendFileSync(logFile, logEntry);
                     appEmitter.emit('payout-log', logEntry);
+                    transactionStore.updateByReference(reference, {
+                        status: 'SIMULATED_SUCCESS',
+                        requestResponse: mockResult
+                    });
                     results.success++;
                     results.details.push({ phone: cleanPhone, status: 'SUCCESS', reference });
                 }
             } else {
                 try {
+                    transactionStore.append(transactionRecord);
+
                     const result = await darajaService.withdraw({
                         amount: recipient.amount,
                         phone: cleanPhone,
                         reference: reference
+                    });
+
+                    const request = result.request || {};
+                    transactionStore.updateByReference(reference, {
+                        status: 'PENDING',
+                        requestResponse: request,
+                        responseCode: request.ResponseCode || null,
+                        responseDescription: request.ResponseDescription || null,
+                        merchantRequestId: request.MerchantRequestID || null,
+                        conversationId: request.ConversationID || null,
+                        originatorConversationId: request.OriginatorConversationID || null
                     });
 
                     const logEntry = `${new Date().toISOString()} - INITIATED - Ref: ${reference}, Phone: ${cleanPhone}, Amount: ${recipient.amount}, Result: ${JSON.stringify(result)}\n`;
@@ -78,9 +111,13 @@ class PayoutService {
                     appEmitter.emit('payout-log', logEntry);
                     
                     results.success++;
-                    results.details.push({ phone: cleanPhone, status: 'SUCCESS', reference });
+                    results.details.push({ phone: cleanPhone, status: 'PENDING', reference });
                 } catch (error) {
                     const errorMsg = error.message || JSON.stringify(error);
+                    transactionStore.updateByReference(reference, {
+                        status: 'FAILED',
+                        errorMessage: errorMsg
+                    });
                     const logEntry = `${new Date().toISOString()} - ERROR - Phone: ${cleanPhone}, Error: ${errorMsg}\n`;
                     fs.appendFileSync(logFile, logEntry);
                     appEmitter.emit('payout-log', logEntry);
@@ -108,6 +145,18 @@ class PayoutService {
 
     saveRecipients(recipients) {
         fs.writeFileSync(recipientsFile, JSON.stringify(recipients, null, 2));
+    }
+
+    getTransactions() {
+        return transactionStore.list();
+    }
+
+    getTransaction(reference) {
+        return transactionStore.findByReference(reference);
+    }
+
+    updateTransactionByConversationId(conversationId, updates) {
+        return transactionStore.updateByConversationId(conversationId, updates);
     }
 
     getLogs(limit = 50) {

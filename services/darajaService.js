@@ -1,6 +1,8 @@
 const axios = require('axios');
 const config = require('../config/daraja');
 
+const BASE_URL = "https://sandbox.safaricom.co.ke";
+
 class DarajaService {
     constructor() {
         this.client = axios.create({
@@ -81,11 +83,12 @@ class DarajaService {
         this.validateConfig(true);
 
         const token = await this.getAccessToken();
+        const amountValue = Math.round(Number(amount));
         const payload = {
             InitiatorName: config.initiatorName,
             SecurityCredential: config.securityCredential,
             CommandID: config.commandId,
-            Amount: Math.round(Number(amount)),
+            Amount: amountValue,
             PartyA: Number(config.shortcode) || config.shortcode,
             PartyB: Number(phone) || phone,
             Remarks: reference || 'Bulk payout',
@@ -95,13 +98,49 @@ class DarajaService {
         };
 
         try {
-            const response = await this.client.post('/mpesa/b2c/v1/paymentrequest', payload, {
+            const response = await this.client.post('`$BASE_URL`/mpesa/b2c/v1/paymentrequest', payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
             });
 
-            return response.data;
+            return {
+                request: response.data,
+                requestPayload: payload
+            };
+        } catch (error) {
+            throw new Error(this.formatError(error));
+        }
+    }
+
+    async queryTransactionStatus({ transactionId, reference }) {
+        this.validateConfig(true);
+
+        const token = await this.getAccessToken();
+        const payload = {
+            Initiator: config.initiatorName,
+            SecurityCredential: config.securityCredential,
+            CommandID: 'TransactionStatusQuery',
+            TransactionID: transactionId,
+            PartyA: Number(config.shortcode) || config.shortcode,
+            IdentifierType: 4,
+            ResultURL: config.resultUrl,
+            QueueTimeOutURL: config.timeoutUrl,
+            Remarks: reference || 'Bulk payout status query',
+            Occasion: reference || 'Bulk payout status query'
+        };
+
+        try {
+            const response = await this.client.post('/mpesa/transactionstatus/v1/query', payload, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            return {
+                request: response.data,
+                requestPayload: payload
+            };
         } catch (error) {
             throw new Error(this.formatError(error));
         }

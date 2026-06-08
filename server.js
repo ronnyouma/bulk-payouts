@@ -57,16 +57,69 @@ function logDarajaCallback(type, payload) {
     appEmitter.emit('payout-log', logEntry);
 }
 
+function extractCallbackDetails(payload) {
+    const root = payload && payload.Result ? payload.Result : payload;
+    const resultParameters = root && Array.isArray(root.ResultParameters) ? root.ResultParameters : [];
+    const parameters = resultParameters.reduce((accumulator, item) => {
+        if (item && item.Key) {
+            accumulator[item.Key] = item.Value;
+        }
+        return accumulator;
+    }, {});
+
+    return {
+        resultCode: root && root.ResultCode !== undefined ? root.ResultCode : payload && payload.ResultCode,
+        resultDesc: root && (root.ResultDesc || root.ResultDescription) ? (root.ResultDesc || root.ResultDescription) : payload && payload.ResultDesc,
+        conversationId: root && (root.ConversationID || root.ConversationId) ? (root.ConversationID || root.ConversationId) : payload && (payload.ConversationID || payload.ConversationId),
+        originatorConversationId: root && (root.OriginatorConversationID || root.OriginatorConversationId) ? (root.OriginatorConversationID || root.OriginatorConversationId) : payload && (payload.OriginatorConversationID || payload.OriginatorConversationId),
+        transactionId: root && (root.TransactionID || root.TransactionId) ? (root.TransactionID || root.TransactionId) : payload && (payload.TransactionID || payload.TransactionId),
+        amount: parameters.Amount || payload.Amount || null,
+        raw: payload
+    };
+}
+
+function reconcileCallback(payload) {
+    const details = extractCallbackDetails(payload);
+    const isSuccess = String(details.resultCode) === '0';
+    const updates = {
+        status: isSuccess ? 'SUCCESS' : 'FAILED',
+        resultCode: details.resultCode,
+        resultDesc: details.resultDesc,
+        transactionId: details.transactionId,
+        callbackPayload: payload
+    };
+
+    const updatedByConversation = payoutService.updateTransactionByConversationId(details.conversationId, updates);
+    if (updatedByConversation) {
+        return updatedByConversation;
+    }
+
+    if (details.originatorConversationId) {
+        return payoutService.updateTransactionByConversationId(details.originatorConversationId, updates);
+    }
+
+    return null;
+}
+
 /**
  * Daraja B2C Callback Listeners
  */
 app.post('/api/b2c/result', (req, res) => {
     logDarajaCallback('B2C-RESULT', req.body);
+    reconcileCallback(req.body);
     res.json({ success: true });
 });
 
 app.post('/api/b2c/timeout', (req, res) => {
     logDarajaCallback('B2C-TIMEOUT', req.body);
+    const details = extractCallbackDetails(req.body);
+    const updates = {
+        status: 'TIMEOUT',
+        resultCode: details.resultCode,
+        resultDesc: details.resultDesc,
+        callbackPayload: req.body
+    };
+    payoutService.updateTransactionByConversationId(details.conversationId, updates) || payoutService.updateTransactionByConversationId(details.originatorConversationId, updates);
     res.json({ success: true });
 });
 
@@ -119,6 +172,56 @@ app.get('/api/balance', async (req, res) => {
             balance: 0,
             error: errorMessage
         });
+    }
+});
+
+app.get('/api/payouts/transactions', (req, res) => {
+    try {
+        res.json({ success: true, transactions: payoutService.getTransactions() });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/payouts/transactions/:reference', (req, res) => {
+    try {
+        const transaction = payoutService.getTransaction(req.params.reference);
+        if (!transaction) {
+            return res.status(404).json({ success: false, error: 'Transaction not found' });
+        }
+
+        res.json({ success: true, transaction });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/payouts/transactions/:reference/status-query', async (req, res) => {
+    try {
+        const transaction = payoutService.getTransaction(req.params.reference);
+        if (!transaction) {
+            return res.status(404).json({ success: false, error: 'Transaction not found' });
+        }
+
+        if (!transaction.transactionId && !transaction.originatorConversationId && !transaction.conversationId) {
+            return res.status(400).json({ success: false, error: 'No transaction identifier available for status query' });
+        }
+
+        const statusQuery = await darajaService.queryTransactionStatus({
+            transactionId: transaction.transactionId || transaction.originatorConversationId || transaction.conversationId,
+            reference: transaction.reference
+        });
+
+        const request = statusQuery.request || {};
+        payoutService.updateTransactionByConversationId(transaction.conversationId || transaction.originatorConversationId, {
+            status: 'STATUS_QUERY_SENT',
+            statusQueryResponse: request,
+            statusQueryRequestPayload: statusQuery.requestPayload
+        });
+
+        res.json({ success: true, response: statusQuery });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
